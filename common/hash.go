@@ -35,7 +35,13 @@ func (tx *Transaction) Hash() []byte {
 		buf.Write(make([]byte, 20)) // Empty address
 	}
 
-	buf.Write(tx.Value.Bytes())
+	// 判断 tx.Value 是否为 nil
+	if tx.Value != nil {
+		buf.Write(tx.Value.Bytes())
+	} else {
+		buf.Write([]byte{}) // 空
+	}
+
 	buf.Write(tx.Input)
 
 	hash := sha256.Sum256(buf.Bytes())

@@ -102,3 +102,19 @@ func (a *Account) Bytes() ([]byte, error) {
 
 	return json.Marshal(accountCopy)
 }
+
+func (a *Account) Lock() {
+	a.lock.Lock()
+}
+
+func (a *Account) Unlock() {
+	a.lock.Unlock()
+}
+
+func (a *Account) RLock() {
+	a.lock.RLock()
+}
+
+func (a *Account) RUnlock() {
+	a.lock.RUnlock()
+}

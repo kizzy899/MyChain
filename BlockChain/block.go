@@ -1,4 +1,4 @@
-package blockchain
+package BlockChain
 
 import (
 	"bytes"

@@ -1,4 +1,4 @@
-package mpt
+package trie
 
 // Nibble represents a 4-bit half-byte used in trie keys.
 type Nibble byte

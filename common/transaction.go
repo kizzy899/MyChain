@@ -13,10 +13,10 @@ type Transaction struct {
 	*types.Transaction // 嵌入 go-ethereum 的 Transaction，
 	R, S               *big.Int
 	V                  uint8
-	gasPrice           *big.Int
+	GasPrice           *big.Int
 	// 基础字段
-	from Address  // 发送方地址
-	To   *Address // 接收方地址(合约创建时为nil)
+	Fro Address  // 发送方地址
+	To  *Address // 接收方地址(合约创建时为nil)
 
 	// 新增的核心字段
 	GasLimit uint64   // 交易消耗的Gas上限
@@ -39,6 +39,7 @@ func NewTransaction(tx *types.Transaction, R, S *big.Int, V uint8) *Transaction 
 }
 
 // From 返回发送者地址，通过签名恢复公钥再转地址
+// From 返回发送者地址，通过签名恢复公钥再转地址
 func (tx *Transaction) From() Address {
 	hash := tx.Hash() // 1. 获取交易哈希（不包含签名部分）
 
@@ -46,7 +47,18 @@ func (tx *Transaction) From() Address {
 	sig := make([]byte, 65)
 	copy(sig[32-len(tx.R.Bytes()):32], tx.R.Bytes()) // r 填充到前 32 字节
 	copy(sig[64-len(tx.S.Bytes()):64], tx.S.Bytes()) // s 填充到中间 32 字节
-	sig[64] = tx.V - 27                              // v 转为 recovery id (0 or 1)
+
+	// 支持 EIP-155 计算 recovery id
+	var recID byte
+	if tx.V == 27 || tx.V == 28 {
+		recID = byte(tx.V - 27)
+	} else if tx.V >= 35 {
+		recID = byte((uint64(tx.V) - 35) % 2)
+	} else {
+		panic(fmt.Sprintf("invalid V value for signature recovery: %d", tx.V))
+	}
+
+	sig[64] = recID
 
 	// 3. 恢复未压缩公钥
 	pubKeyBytes, err := secp256k1.RecoverPubkey(hash, sig)
@@ -69,11 +81,11 @@ func (tx *Transaction) From() Address {
 	return addr
 }
 
-func (tx *Transaction) GasPrice() uint64 {
-	if tx.gasPrice == nil {
+func (tx *Transaction) GasPriceUint64() uint64 {
+	if tx.GasPrice == nil {
 		return 0
 	}
-	return tx.gasPrice.Uint64()
+	return tx.GasPrice.Uint64()
 }
 
 // Hex 返回交易哈希的十六进制字符串表示

@@ -33,6 +33,12 @@ type DefaultPool struct {
 	pendings map[common.Address]pendingTxs
 	queue    map[common.Address]QueueSortedTxs
 }
+type PoolTransaction interface {
+	From() common.Address
+	Nonce() uint64
+	GasPrice() uint64
+	Hex() string
+}
 
 func NewDefaultPool(state *trie.StateTrie) *DefaultPool { // 创建并返回一个新的 DefaultPool 实例
 	return &DefaultPool{
@@ -57,7 +63,7 @@ func (sorted *DefaultSortedTxs) Push(tx *common.Transaction) {
 
 func (sorted DefaultSortedTxs) Replace(tx *common.Transaction) {
 	for key, value := range sorted {
-		if value.Nonce == tx.Nonce && tx.GasPrice() > 0 {
+		if value.Nonce == tx.Nonce && tx.GasPriceUint64() > 0 {
 			sorted[key] = tx
 		}
 	}
@@ -77,7 +83,7 @@ func (sorted DefaultSortedTxs) Nonce() uint64 {
 }
 
 func (sorted DefaultSortedTxs) GasPrice() uint64 {
-	return sorted[0].GasPrice()
+	return sorted[0].GasPriceUint64()
 }
 
 func (pool *DefaultPool) PrintfPool() {
@@ -108,6 +114,11 @@ func (pool *DefaultPool) SetStatRoot(root hash.Hash) {
 
 func (pool *DefaultPool) NewTx(tx *common.Transaction) {
 	account := pool.State.Load(tx.From())
+	if account == nil {
+		// 没有账户信息，拒绝该交易
+		return
+	}
+
 	if account.Nonce >= tx.Nonce {
 		return
 	}
@@ -149,7 +160,7 @@ func (pool *DefaultPool) pushPendingTx(tx *common.Transaction) {
 		sort.Sort(pool.txs)
 	} else {
 		last := blks[len(blks)-1]
-		if last.GasPrice() <= tx.GasPrice() {
+		if last.GasPrice() <= tx.GasPriceUint64() {
 			*last = append(*last, tx)
 		} else {
 			blk := &DefaultSortedTxs{tx}
@@ -199,7 +210,7 @@ func (pool *DefaultPool) NotifyTxEvent(txs []*common.Transaction) {
 		fmt.Printf("NotifyTxEvent: New tx from %s with nonce %d and gas price %d\n",
 			tx.Hex(),
 			tx.Nonce,
-			tx.GasPrice(),
+			tx.GasPriceUint64(),
 		)
 	}
 }

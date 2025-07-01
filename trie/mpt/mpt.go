@@ -1,4 +1,4 @@
-package mpt
+package trie
 
 import (
 	"CHAIN/common"
@@ -82,6 +82,11 @@ func (m *MPT) FindLongestPrefix(key []Nibble) (paths [][]Nibble, nodes []Node) {
 func (m *MPT) Insert(key, value []byte) error {
 	nibbles := convertToNibbles(key)
 	valueHash := Sha3_256(value)
+
+	// 新增：存储原始 value，key 为 valueHash
+	if err := m.db.Put(valueHash.Bytes(), value); err != nil {
+		return err
+	}
 
 	if m.Root == nil {
 		leaf := NewLeafNode(nibbles, common.Hash(valueHash))
@@ -302,6 +307,7 @@ func (m *MPT) Insert(key, value []byte) error {
 
 	if rootModified {
 		m.Root = newRoot
+		fmt.Printf("Set newRoot successfully: %#v\n", newRoot)
 	}
 
 	return nil
@@ -332,12 +338,16 @@ func NewLeafNode(path []Nibble, valueHash common.Hash) *LeafNode {
 // 通过节点的哈希值从底层存储中加载节点
 func (m *MPT) getNodeByHash(hash common.Hash) Node {
 	if hash == (common.Hash{}) {
+
+		fmt.Println("getNodeByHash: empty hash")
 		return nil
 	}
 	data, err := m.db.Get(hash.Bytes())
 	if err != nil || len(data) == 0 {
+		fmt.Printf("getNodeByHash: not found data for hash %x, err=%v\n", hash.Bytes(), err)
 		return nil
 	}
+	fmt.Printf("getNodeByHash: got data len=%d for hash %x\n", len(data), hash.Bytes())
 
 	var nodeType struct {
 		NodeType NodeType `json:"type"`
@@ -386,24 +396,58 @@ func prefixLength(a, b []Nibble) int {
 
 // Search 在MPT中查找指定key对应的value
 func (m *MPT) Search(key []byte) ([]byte, error) {
-	// 将key转换为nibbles形式(半字节)
 	nibbles := convertToNibbles(key)
+	node := m.Root
 
-	// 查找最长匹配路径
-	pathes, nodes := m.FindLongestPrefix(nibbles)
-	prefix := joinNibblePaths(pathes)
+	for node != nil {
+		switch n := node.(type) {
+		case *LeafNode:
+			fmt.Printf("At LeafNode with path: %v\n", n.Path)
+			fmt.Printf("Searching for nibbles: %v\n", nibbles)
 
-	// 检查是否完全匹配
-	if nibblesEqual(prefix, nibbles) {
-		// 获取叶子节点
-		leaf := nodes[len(nodes)-1]
-		leafNode := leaf.(*LeafNode)
+			// 先检查是否完全相等
+			if nibblesEqual(n.Path, nibbles) {
+				val, err := m.db.Get(n.Value[:])
+				if err != nil {
+					return nil, err
+				}
+				return val, nil
+			}
 
-		// 从数据库获取实际值
-		return m.db.Get(leafNode.Value[:])
+			// 如果不等，尝试打印公共前缀长度，帮助调试
+			prefixLen := prefixLength(n.Path, nibbles)
+			fmt.Printf("Prefix length between node path and key: %d\n", prefixLen)
+
+			return nil, MPT_KEY_NOT_FOUND
+
+		case *ExtensionNode:
+			if len(nibbles) < len(n.Path) || !nibblesEqual(nibbles[:len(n.Path)], n.Path) {
+				return nil, MPT_KEY_NOT_FOUND
+			}
+			childNode := m.getNodeByHash(common.Hash(n.Child))
+			if childNode == nil {
+				return nil, MPT_KEY_NOT_FOUND
+			}
+			node = childNode
+			nibbles = nibbles[len(n.Path):]
+
+		case *BranchNode:
+			if len(nibbles) == 0 {
+				return m.db.Get(n.Children[15][:]) // value 在 branch 的第 15 槽
+			}
+			next := n.Children[nibbles[0]]
+			childNode := m.getNodeByHash(common.Hash(next))
+			if childNode == nil {
+				return nil, MPT_KEY_NOT_FOUND
+			}
+			node = childNode
+			nibbles = nibbles[1:]
+
+		default:
+			return nil, MPT_KEY_NOT_FOUND
+		}
 	}
 
-	// 未找到返回错误
 	return nil, MPT_KEY_NOT_FOUND
 }
 

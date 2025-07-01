@@ -1,7 +1,7 @@
 package leveldb
 
 import (
-	"Trie/kvstore"
+	"CHAIN/kvstore"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 

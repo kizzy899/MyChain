@@ -1,4 +1,4 @@
-package mpt
+package trie
 
 import (
 	"encoding/json"
